@@ -14,7 +14,7 @@ sources:
   geoip:
     url: https://example.com/geoip.dat
 output:
-  extension: lst
+  extensions: [lst]
 lists:
   - name: ru
     geosite: [category-ru]
@@ -31,7 +31,7 @@ func TestParseValidAndDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Output.Dir != "lists" || cfg.Output.Extension != "lst" || !cfg.Output.AggregateCIDRs {
+	if cfg.Output.Dir != "lists" || strings.Join(cfg.Output.Extensions, ",") != "lst" || !cfg.Output.AggregateCIDRs {
 		t.Fatalf("defaults not applied: %+v", cfg.Output)
 	}
 	if cfg.Safety.MaxChangeRatio != 0.30 || cfg.Safety.SmallChangeLines != 10 {
@@ -48,8 +48,11 @@ func TestParseValidAndDefaults(t *testing.T) {
 
 func TestParseRejects(t *testing.T) {
 	cases := map[string]string{
-		"unknown key":         strings.Replace(valid, "extension: lst", "extension: lst\n  colour: red", 1),
-		"dotted extension":    strings.Replace(valid, "extension: lst", "extension: .lst", 1),
+		"unknown key":         strings.Replace(valid, "extensions: [lst]", "extensions: [lst]\n  colour: red", 1),
+		"dotted extension":    strings.Replace(valid, "extensions: [lst]", "extensions: [.lst]", 1),
+		"no extensions":       strings.Replace(valid, "extensions: [lst]", "extensions: []", 1),
+		"duplicate extension": strings.Replace(valid, "extensions: [lst]", "extensions: [lst, lst]", 1),
+		"scalar extensions":   strings.Replace(valid, "extensions: [lst]", "extensions: lst", 1),
 		"bad name":            strings.Replace(valid, "name: ru", "name: RU_list", 1),
 		"duplicate name":      strings.Replace(valid, "name: youtube", "name: ru", 1),
 		"unknown output":      strings.Replace(valid, "outputs: [combined]", "outputs: [all]", 1),

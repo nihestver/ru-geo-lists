@@ -15,9 +15,11 @@ sources:
 
 output:
   dir: lists
-  # The single place where the file extension is defined. Do not change it
-  # after the first release: clients reference the published paths.
-  extension: txt
+  # File extensions to publish. Every list is written once per extension with
+  # byte-identical content (ru.txt and ru.lst are the same bytes); the
+  # validator checks that the copies never diverge. Do not remove or rename a
+  # published extension: clients reference the published paths.
+  extensions: [txt, lst]
   # Merge adjacent and overlapping prefixes. This never changes the set of
   # matched addresses (verified by tests).
   aggregate_cidrs: true
@@ -31,11 +33,11 @@ safety:
   # not blocked by a handful of entries.
   small_change_lines: 10
 
-# Output kinds:
-#   combined  domains, then IPv4 CIDRs, then IPv6 CIDRs   -> <name>.<extension>
-#   domains   domains only                                 -> <name>-domains.<extension>
-#   ipv4      IPv4 CIDRs only                              -> <name>-ipv4.<extension>
-#   ipv6      IPv6 CIDRs only                              -> <name>-ipv6.<extension>
+# Output kinds (each written once per extension in output.extensions):
+#   combined  domains, then IPv4 CIDRs, then IPv6 CIDRs   -> <name>.<ext>
+#   domains   domains only                                 -> <name>-domains.<ext>
+#   ipv4      IPv4 CIDRs only                              -> <name>-ipv4.<ext>
+#   ipv6      IPv6 CIDRs only                              -> <name>-ipv6.<ext>
 # Category codes are matched case-insensitively.
 lists:
   - name: ru

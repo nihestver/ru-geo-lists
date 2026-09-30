@@ -138,3 +138,25 @@ func TestWriteReadValidateFile(t *testing.T) {
 		t.Fatalf("expected not-exist error, got %v", err)
 	}
 }
+
+func TestSameContent(t *testing.T) {
+	dir := t.TempDir()
+	a, b, c := filepath.Join(dir, "a.txt"), filepath.Join(dir, "a.lst"), filepath.Join(dir, "b.lst")
+	for p, content := range map[string]string{a: "x.com\n", b: "x.com\n", c: "y.com\n"} {
+		if err := os.WriteFile(p, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := SameContent([]string{a}); err != nil {
+		t.Fatal(err)
+	}
+	if err := SameContent([]string{a, b}); err != nil {
+		t.Fatal(err)
+	}
+	if err := SameContent([]string{a, b, c}); err == nil || !strings.Contains(err.Error(), "b.lst differs from") {
+		t.Fatalf("expected b.lst to differ, got %v", err)
+	}
+	if err := SameContent([]string{a, filepath.Join(dir, "missing.lst")}); err == nil {
+		t.Fatal("a missing copy must be an error")
+	}
+}

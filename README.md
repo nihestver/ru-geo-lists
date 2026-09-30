@@ -12,19 +12,21 @@
 
 | Файл | Содержимое | Источник |
 |---|---|---|
-| [ru.txt](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/ru.txt) | домены + IPv4 + IPv6 | `geosite:category-ru` + `dion.vc`, `inno.tech`, `inno.local` + `geoip:ru` |
-| [ru-domains.txt](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/ru-domains.txt) | только домены | то же |
-| [ru-ipv4.txt](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/ru-ipv4.txt) | только IPv4-CIDR | `geoip:ru` |
-| [ru-ipv6.txt](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/ru-ipv6.txt) | только IPv6-CIDR | `geoip:ru` |
-| [telegram.txt](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/telegram.txt) | домены + IPv4 + IPv6 | `geosite:telegram` + `geoip:telegram` |
-| [telegram-domains.txt](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/telegram-domains.txt) | только домены | `geosite:telegram` |
-| [telegram-ipv4.txt](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/telegram-ipv4.txt) | только IPv4-CIDR | `geoip:telegram` |
-| [telegram-ipv6.txt](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/telegram-ipv6.txt) | только IPv6-CIDR | `geoip:telegram` |
-| [youtube.txt](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/youtube.txt) | только домены | `geosite:youtube` |
+| [ru.txt](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/ru.txt) · [ru.lst](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/ru.lst) | домены + IPv4 + IPv6 | `geosite:category-ru` + `dion.vc`, `inno.tech`, `inno.local` + `geoip:ru` |
+| [ru-domains.txt](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/ru-domains.txt) · [ru-domains.lst](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/ru-domains.lst) | только домены | то же |
+| [ru-ipv4.txt](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/ru-ipv4.txt) · [ru-ipv4.lst](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/ru-ipv4.lst) | только IPv4-CIDR | `geoip:ru` |
+| [ru-ipv6.txt](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/ru-ipv6.txt) · [ru-ipv6.lst](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/ru-ipv6.lst) | только IPv6-CIDR | `geoip:ru` |
+| [telegram.txt](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/telegram.txt) · [telegram.lst](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/telegram.lst) | домены + IPv4 + IPv6 | `geosite:telegram` + `geoip:telegram` |
+| [telegram-domains.txt](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/telegram-domains.txt) · [telegram-domains.lst](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/telegram-domains.lst) | только домены | `geosite:telegram` |
+| [telegram-ipv4.txt](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/telegram-ipv4.txt) · [telegram-ipv4.lst](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/telegram-ipv4.lst) | только IPv4-CIDR | `geoip:telegram` |
+| [telegram-ipv6.txt](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/telegram-ipv6.txt) · [telegram-ipv6.lst](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/telegram-ipv6.lst) | только IPv6-CIDR | `geoip:telegram` |
+| [youtube.txt](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/youtube.txt) · [youtube.lst](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/youtube.lst) | только домены | `geosite:youtube` |
 
-Три основных файла: `ru.txt`, `telegram.txt`, `youtube.txt`. Остальные —
-производные для клиентов, которые не принимают смешанные списки или IPv6.
-Пути опубликованных файлов после первого релиза не меняются.
+Три основных списка: `ru`, `telegram`, `youtube`. Остальные — производные
+для клиентов, которые не принимают смешанные списки или IPv6. Каждый файл
+опубликован в двух байт-идентичных копиях, `.txt` и `.lst`: берите то
+расширение, которое ожидает ваш клиент. Пути опубликованных файлов после
+первого релиза не меняются.
 
 ## Формат
 
@@ -87,7 +89,8 @@ Actions поддерживает IANA-зоны в `schedule`) и вручную 
 2. Скачивает `geosite.dat` и `geoip.dat` с повторными попытками, проверяет
    минимальный размер и `sha256` по опубликованным `*.sha256sum`.
 3. Собирает списки и сравнивает их с уже опубликованными.
-4. Проверяет результат валидатором.
+4. Проверяет результат валидатором, включая побайтовое совпадение копий
+   `.txt` и `.lst`.
 5. Коммитит и пушит **только если файлы реально изменились**. Автор коммита —
    `github-actions[bot]`, в теле коммита статистика: строки, домены и CIDR по
    каждому файлу, прирост и убыль. Та же статистика попадает в
@@ -122,26 +125,34 @@ GitHub автоматически отключает scheduled-workflow в пу�
 (GitHub присылает письмо), его включают одной кнопкой на вкладке Actions или
 командой `gh workflow enable update.yml`.
 
-## Почему `.txt`
+## Расширения `.txt` и `.lst`
 
-Проверено на `raw.githubusercontent.com`: и для `.lst`, и для `.txt` (и даже
-для файлов без расширения) сервер отдаёт одинаковые заголовки —
-`content-type: text/plain; charset=utf-8`, `x-content-type-options: nosniff`,
-`access-control-allow-origin: *`, `cache-control: max-age=300`. Тип содержимого
-определяется по содержимому, а не по расширению, поэтому для клиентов,
-загружающих списки по URL, разницы нет. При равенстве выбран `.txt`: он
-открывается штатным редактором на любой ОС без дополнительных ассоциаций,
-понятен любому пользователю, и его используют многие источники списков
-(например, `russia-mobile-internet-whitelist`); `.lst` распространён в
-сообществе (itdoginfo/allow-domains, antifilter.download), но преимуществ не
-даёт. Расширение задаётся одной константой `output.extension` в
-`config.yaml`; после первого релиза его менять не следует, потому что клиенты
-ссылаются на опубликованные пути.
+Каждый список опубликован дважды: `ru-ipv4.txt` и `ru-ipv4.lst` — это одни и
+те же байты, валидатор проверяет их совпадение при каждой сборке. `.lst`
+принято в сообществе (1andrevich/Re-filter-lists, itdoginfo/allow-domains,
+antifilter.download), и часть клиентов и скриптов ждёт именно его; `.txt`
+открывается штатным редактором на любой ОС и используется другими источниками
+(например, `russia-mobile-internet-whitelist`). Содержимое обеих копий
+устроено так же, как `.lst`-файлы Re:filter: один домен или CIDR на строку,
+без комментариев и заголовков.
+
+Проверено на `raw.githubusercontent.com`: для `.lst`, `.txt` и файлов без
+расширения сервер отдаёт одинаковые заголовки (`content-type: text/plain;
+charset=utf-8`, `x-content-type-options: nosniff`,
+`access-control-allow-origin: *`, `cache-control: max-age=300`) и одинаково
+сжимает ответ gzip, если клиент присылает `Accept-Encoding` (`ru-ipv4.txt`:
+204 КБ → 43 КБ). Тип содержимого определяется по содержимому, а не по
+расширению, поэтому скорость загрузки от расширения не зависит. Если клиент
+скачивает большой список медленно, причина в самом клиенте (построчный разбор,
+отсутствие поддержки gzip) или в канале до CDN GitHub, а не в имени файла.
+
+Расширения задаются списком `output.extensions` в `config.yaml`. Удалять или
+переименовывать опубликованное расширение нельзя: клиенты ссылаются на пути.
 
 ## Конфигурация
 
 Всё задаётся декларативно в [`config.yaml`](config.yaml): источники, каталог и
-расширение выходных файлов, порог безопасности и сами списки. Добавить
+расширения выходных файлов, порог безопасности и сами списки. Добавить
 категорию или домен — правка одной строки:
 
 ```yaml
@@ -153,8 +164,10 @@ lists:
     outputs: [combined, domains, ipv4, ipv6]
 ```
 
-Виды выходных файлов: `combined` → `<name>.txt`, `domains` → `<name>-domains.txt`,
-`ipv4` → `<name>-ipv4.txt`, `ipv6` → `<name>-ipv6.txt`.
+Виды выходных файлов: `combined` → `<name>.<ext>`, `domains` → `<name>-domains.<ext>`,
+`ipv4` → `<name>-ipv4.<ext>`, `ipv6` → `<name>-ipv6.<ext>`. Каждый вид
+записывается по одному разу на каждое расширение из `output.extensions`
+(сейчас `txt` и `lst`).
 
 ## Инструмент
 
@@ -180,7 +193,8 @@ go test ./...
 и `-commit-message файл.txt`. Валидатор проверяет каждую строку (валидный
 домен или CIDR в канонической форме), отсутствие пустых строк, дубликатов, CR
 и BOM, порядок секций и сортировку; для производных файлов — что в них только
-домены, только IPv4 или только IPv6.
+домены, только IPv4 или только IPv6; копии одного списка с разными
+расширениями обязаны совпадать байт в байт.
 
 ## Источники, лицензии и атрибуция
 

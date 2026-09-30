@@ -141,6 +141,29 @@ func ReadLines(path string) ([]string, error) {
 	return strings.Split(s, "\n"), nil
 }
 
+// SameContent checks that every file holds exactly the same bytes as the
+// first one. The published copies of a list (for example ru.txt and ru.lst)
+// must never diverge.
+func SameContent(paths []string) error {
+	if len(paths) < 2 {
+		return nil
+	}
+	first, err := os.ReadFile(paths[0])
+	if err != nil {
+		return err
+	}
+	for _, p := range paths[1:] {
+		data, err := os.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		if !bytes.Equal(data, first) {
+			return fmt.Errorf("%s differs from %s", p, paths[0])
+		}
+	}
+	return nil
+}
+
 // ValidateFile reads path and checks it with Validate.
 func ValidateFile(path string, k Kind) error {
 	data, err := os.ReadFile(path)

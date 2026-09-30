@@ -40,8 +40,9 @@ type Source struct {
 // Output controls where and how lists are written.
 type Output struct {
 	Dir string `yaml:"dir"`
-	// Extension is the single place where the file extension is defined.
-	Extension string `yaml:"extension"`
+	// Extensions lists the file extensions to publish. Every list file is
+	// written once per extension with byte-identical content.
+	Extensions []string `yaml:"extensions"`
 	// AggregateCIDRs merges adjacent and overlapping prefixes (never changes
 	// the set of matched addresses).
 	AggregateCIDRs bool `yaml:"aggregate_cidrs"`
@@ -82,7 +83,7 @@ func (l List) Kinds() ([]listfile.Kind, error) {
 // Default returns the configuration used for keys that are absent from the file.
 func Default() Config {
 	return Config{
-		Output: Output{Dir: "lists", Extension: "txt", AggregateCIDRs: true},
+		Output: Output{Dir: "lists", Extensions: []string{"txt"}, AggregateCIDRs: true},
 		Safety: Safety{MaxChangeRatio: 0.30, SmallChangeLines: 10},
 	}
 }
@@ -127,8 +128,18 @@ func (c *Config) Validate() error {
 	if c.Output.Dir == "" {
 		fail("output.dir must not be empty")
 	}
-	if !extRe.MatchString(c.Output.Extension) {
-		fail("output.extension %q must be letters/digits without a dot", c.Output.Extension)
+	if len(c.Output.Extensions) == 0 {
+		fail("output.extensions must not be empty")
+	}
+	seenExt := map[string]bool{}
+	for _, ext := range c.Output.Extensions {
+		if !extRe.MatchString(ext) {
+			fail("output.extensions: %q must be letters/digits without a dot", ext)
+		}
+		if seenExt[ext] {
+			fail("output.extensions: duplicate %q", ext)
+		}
+		seenExt[ext] = true
 	}
 	if c.Safety.MaxChangeRatio <= 0 || c.Safety.MaxChangeRatio > 100 {
 		fail("safety.max_change_ratio %v must be in (0, 100]", c.Safety.MaxChangeRatio)

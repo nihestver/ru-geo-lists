@@ -172,32 +172,37 @@ func Run(opt Options) (*Report, error) {
 			return nil, err
 		}
 		for _, k := range kinds {
-			name := listfile.FileName(lr.Name, k, cfg.Output.Extension)
-			path := filepath.Join(cfg.Output.Dir, name)
 			lines := lr.content.Lines(k)
 			if len(lines) == 0 {
-				return nil, fmt.Errorf("list %q: output %s would be empty", lr.Name, name)
+				return nil, fmt.Errorf("list %q: %s output would be empty", lr.Name, k)
 			}
 			if err := listfile.Validate(listfile.Encode(lines), k); err != nil {
-				return nil, fmt.Errorf("list %q: generated %s is invalid (bug): %w", lr.Name, name, err)
+				return nil, fmt.Errorf("list %q: generated %s output is invalid (bug): %w", lr.Name, k, err)
 			}
-			fs := FileStats{Name: name, Path: path, Kind: k, Lines: len(lines), Previous: -1}
-			prev, err := listfile.ReadLines(path)
-			switch {
-			case err == nil:
-				fs.Previous = len(prev)
-				fs.Added, fs.Removed = diff(prev, lines)
-				if exceeds(fs.Previous, fs.Lines, cfg.Safety) {
-					fs.Violation = fmt.Sprintf("%s: %d -> %d lines (%+.1f%%), threshold is %.0f%% (changes of up to %d lines are always allowed)",
-						name, fs.Previous, fs.Lines, 100*float64(fs.Lines-fs.Previous)/float64(fs.Previous), 100*cfg.Safety.MaxChangeRatio, cfg.Safety.SmallChangeLines)
-					rep.Violations = append(rep.Violations, fs.Violation)
+			// One file per extension, all with the same content. Each copy is
+			// compared with its own previous version, so a newly added
+			// extension shows up as new files without affecting the others.
+			for _, ext := range cfg.Output.Extensions {
+				name := listfile.FileName(lr.Name, k, ext)
+				path := filepath.Join(cfg.Output.Dir, name)
+				fs := FileStats{Name: name, Path: path, Kind: k, Lines: len(lines), Previous: -1}
+				prev, err := listfile.ReadLines(path)
+				switch {
+				case err == nil:
+					fs.Previous = len(prev)
+					fs.Added, fs.Removed = diff(prev, lines)
+					if exceeds(fs.Previous, fs.Lines, cfg.Safety) {
+						fs.Violation = fmt.Sprintf("%s: %d -> %d lines (%+.1f%%), threshold is %.0f%% (changes of up to %d lines are always allowed)",
+							name, fs.Previous, fs.Lines, 100*float64(fs.Lines-fs.Previous)/float64(fs.Previous), 100*cfg.Safety.MaxChangeRatio, cfg.Safety.SmallChangeLines)
+						rep.Violations = append(rep.Violations, fs.Violation)
+					}
+				case errors.Is(err, os.ErrNotExist):
+					fs.Added = len(lines)
+				default:
+					return nil, err
 				}
-			case errors.Is(err, os.ErrNotExist):
-				fs.Added = len(lines)
-			default:
-				return nil, err
+				lr.Files = append(lr.Files, fs)
 			}
-			lr.Files = append(lr.Files, fs)
 		}
 	}
 
@@ -389,17 +394,44 @@ func delta(f FileStats) string {
 	}
 }
 
+// fileGroups joins consecutive files of the same kind with identical
+// statistics, so that the byte-identical copies of a list (ru.txt, ru.lst)
+// share one report row. Copies whose previous versions differ, for example
+// when an extension has just been added, stay on separate rows.
+func fileGroups(files []FileStats) [][]FileStats {
+	var groups [][]FileStats
+	for _, f := range files {
+		if n := len(groups); n > 0 {
+			if g := groups[n-1][0]; g.Kind == f.Kind && g.Lines == f.Lines && g.Previous == f.Previous && g.Added == f.Added && g.Removed == f.Removed {
+				groups[n-1] = append(groups[n-1], f)
+				continue
+			}
+		}
+		groups = append(groups, []FileStats{f})
+	}
+	return groups
+}
+
+func names(g []FileStats) []string {
+	out := make([]string, len(g))
+	for i, f := range g {
+		out[i] = f.Name
+	}
+	return out
+}
+
 // Markdown renders the report for $GITHUB_STEP_SUMMARY.
 func (r *Report) Markdown() string {
 	var b strings.Builder
 	b.WriteString("## Lists\n\n| File | Lines | Previous | Change |\n|---|---:|---:|---|\n")
 	for _, lr := range r.Lists {
-		for _, f := range lr.Files {
+		for _, g := range fileGroups(lr.Files) {
+			f := g[0]
 			prev := "—"
 			if !f.IsNew() {
 				prev = fmt.Sprint(f.Previous)
 			}
-			fmt.Fprintf(&b, "| `%s` | %d | %s | %s |\n", f.Name, f.Lines, prev, delta(f))
+			fmt.Fprintf(&b, "| `%s` | %d | %s | %s |\n", strings.Join(names(g), "`, `"), f.Lines, prev, delta(f))
 		}
 	}
 	b.WriteString("\n## Sources\n\n| List | Domains | IPv4 | IPv6 | Notes |\n|---|---:|---:|---:|---|\n")
@@ -480,8 +512,9 @@ func (r *Report) CommitMessage() string {
 	var b strings.Builder
 	b.WriteString(title + "\n\n")
 	for _, lr := range r.Lists {
-		for i, f := range lr.Files {
-			fmt.Fprintf(&b, "%s: %d lines (%s)", f.Name, f.Lines, delta(f))
+		for i, g := range fileGroups(lr.Files) {
+			f := g[0]
+			fmt.Fprintf(&b, "%s: %d lines (%s)", strings.Join(names(g), ", "), f.Lines, delta(f))
 			if i == 0 {
 				fmt.Fprintf(&b, "; %d domains, %d IPv4, %d IPv6", lr.Domains, lr.IPv4, lr.IPv6)
 			}

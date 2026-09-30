@@ -113,6 +113,7 @@ sources:
   geoip: {url: https://example.invalid/geoip.dat}
 output:
   dir: %s
+  extensions: [txt, lst]
 lists:
   - name: ru
     geosite: [category-ru]
@@ -161,13 +162,19 @@ func TestRunProducesExpectedFiles(t *testing.T) {
 	domains := "dion.vc\nexample.com\ninno.local\ninno.tech\nother.org\nru\nvk.com\nxn--e1afmkfd.xn--p1ai\n"
 	v4 := "10.0.0.0/24\n192.168.0.0/16\n"
 	v6 := "2a02:6b8::/32\n"
-	want := map[string]string{
+	txt := map[string]string{
 		"ru.txt":           domains + v4 + v6,
 		"ru-domains.txt":   domains,
 		"ru-ipv4.txt":      v4,
 		"ru-ipv6.txt":      v6,
 		"telegram.txt":     "t.me\ntelegram.org\n149.154.160.0/20\n2001:b28:f23d::/48\n",
 		"notpriv-ipv4.txt": "128.0.0.0/1\n",
+	}
+	// Every file is published twice with the same bytes.
+	want := map[string]string{}
+	for name, content := range txt {
+		want[name] = content
+		want[strings.TrimSuffix(name, ".txt")+".lst"] = content
 	}
 	for name, content := range want {
 		if got := read(t, filepath.Join(out, name)); got != content {
@@ -208,13 +215,13 @@ func TestRunProducesExpectedFiles(t *testing.T) {
 		}
 	}
 	md := rep.Markdown()
-	for _, s := range []string{"`ru.txt`", "geosite:category-ru", "inverse_match", "single-label (TLD) entries: ru", "5 subdomains removed", "3 prefixes merged", "All files are within"} {
+	for _, s := range []string{"| `ru.txt`, `ru.lst` | 11 | — | new |", "geosite:category-ru", "inverse_match", "single-label (TLD) entries: ru", "5 subdomains removed", "3 prefixes merged", "All files are within"} {
 		if !strings.Contains(md, s) {
 			t.Errorf("markdown lacks %q:\n%s", s, md)
 		}
 	}
 	msg := rep.CommitMessage()
-	if !strings.HasPrefix(msg, "Update lists: ru new, telegram new, notpriv new\n\n") || !strings.Contains(msg, "ru.txt: 11 lines (new); 8 domains, 2 IPv4, 1 IPv6\n") {
+	if !strings.HasPrefix(msg, "Update lists: ru new, telegram new, notpriv new\n\n") || !strings.Contains(msg, "ru.txt, ru.lst: 11 lines (new); 8 domains, 2 IPv4, 1 IPv6\n") {
 		t.Errorf("commit message:\n%s", msg)
 	}
 }
@@ -245,8 +252,54 @@ func TestRunIsDeterministicAndReportsNoChange(t *testing.T) {
 			}
 		}
 	}
-	if msg := rep.CommitMessage(); !strings.HasPrefix(msg, "Update lists\n\n") || !strings.Contains(msg, "ru.txt: 11 lines (=)") {
+	if msg := rep.CommitMessage(); !strings.HasPrefix(msg, "Update lists\n\n") || !strings.Contains(msg, "ru.txt, ru.lst: 11 lines (=)") {
 		t.Errorf("commit message:\n%s", msg)
+	}
+}
+
+func TestAddingAnExtensionReportsNewCopies(t *testing.T) {
+	// First publish .txt only, then add .lst: the .txt files are unchanged,
+	// the .lst files are new, and the two must not be merged into one row.
+	opt, out := setup(t, strings.Replace(baseConfig, "extensions: [txt, lst]", "extensions: [txt]", 1))
+	if _, err := Run(opt); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := config.Parse([]byte(strings.Replace(baseConfig, "%s", out, 1)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	opt.Config = cfg
+	rep, err := Run(opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Violations) != 0 || !rep.Written {
+		t.Fatalf("unexpected report state: %+v", rep)
+	}
+	for _, lr := range rep.Lists {
+		for _, f := range lr.Files {
+			isLst := strings.HasSuffix(f.Name, ".lst")
+			if f.IsNew() != isLst || (isLst && f.Added != f.Lines) || (!isLst && (f.Added != 0 || f.Removed != 0)) {
+				t.Errorf("file stats: %+v", f)
+			}
+		}
+	}
+	md := rep.Markdown()
+	for _, s := range []string{"| `ru.txt` | 11 | 11 | = |", "| `ru.lst` | 11 | — | new |", "| `ru-ipv4.txt` | 2 | 2 | = |", "| `ru-ipv4.lst` | 2 | — | new |"} {
+		if !strings.Contains(md, s) {
+			t.Errorf("markdown lacks %q:\n%s", s, md)
+		}
+	}
+	msg := rep.CommitMessage()
+	for _, s := range []string{"ru.txt: 11 lines (=); 8 domains, 2 IPv4, 1 IPv6\n", "ru.lst: 11 lines (new)\n", "telegram.txt: 4 lines (=); 2 domains, 1 IPv4, 1 IPv6\ntelegram.lst: 4 lines (new)\n"} {
+		if !strings.Contains(msg, s) {
+			t.Errorf("commit message lacks %q:\n%s", s, msg)
+		}
+	}
+	for _, base := range []string{"ru", "ru-domains", "ru-ipv4", "ru-ipv6", "telegram", "notpriv-ipv4"} {
+		if err := listfile.SameContent([]string{filepath.Join(out, base+".txt"), filepath.Join(out, base+".lst")}); err != nil {
+			t.Error(err)
+		}
 	}
 }
 

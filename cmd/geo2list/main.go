@@ -176,6 +176,9 @@ func runValidate(args []string) error {
 		kind listfile.Kind
 	}
 	var targets []target
+	// copies groups the files of one list and kind that must be byte-identical
+	// (one per configured extension).
+	var copies [][]string
 	if fs.NArg() > 0 {
 		k, err := listfile.ParseKind(*kindName)
 		if err != nil {
@@ -195,7 +198,15 @@ func runValidate(args []string) error {
 				return err
 			}
 			for _, k := range kinds {
-				targets = append(targets, target{filepath.Join(cfg.Output.Dir, listfile.FileName(l.Name, k, cfg.Output.Extension)), k})
+				var paths []string
+				for _, ext := range cfg.Output.Extensions {
+					p := filepath.Join(cfg.Output.Dir, listfile.FileName(l.Name, k, ext))
+					targets = append(targets, target{p, k})
+					paths = append(paths, p)
+				}
+				if len(paths) > 1 {
+					copies = append(copies, paths)
+				}
 			}
 		}
 	}
@@ -209,8 +220,16 @@ func runValidate(args []string) error {
 		lines, _ := listfile.ReadLines(t.path)
 		fmt.Printf("ok   %-28s %7d lines (%s)\n", t.path, len(lines), t.kind)
 	}
+	for _, paths := range copies {
+		if err := listfile.SameContent(paths); err != nil {
+			errs = append(errs, err)
+			log.Printf("FAIL %v", err)
+			continue
+		}
+		fmt.Printf("ok   %s are byte-identical\n", strings.Join(paths, ", "))
+	}
 	if len(errs) > 0 {
-		return fmt.Errorf("%d of %d files are invalid", len(errs), len(targets))
+		return fmt.Errorf("%d of %d checks failed", len(errs), len(targets)+len(copies))
 	}
 	return nil
 }
