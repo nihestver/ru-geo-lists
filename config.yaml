@@ -54,3 +54,7 @@ lists:
   - name: youtube
     geosite: [youtube]
     outputs: [combined]
+
+  - name: ip-geo-detect
+    geosite: [category-ip-geo-detect]
+    outputs: [combined]

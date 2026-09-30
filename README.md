@@ -21,8 +21,10 @@
 | [telegram-ipv4.txt](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/telegram-ipv4.txt) · [telegram-ipv4.lst](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/telegram-ipv4.lst) | только IPv4-CIDR | `geoip:telegram` |
 | [telegram-ipv6.txt](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/telegram-ipv6.txt) · [telegram-ipv6.lst](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/telegram-ipv6.lst) | только IPv6-CIDR | `geoip:telegram` |
 | [youtube.txt](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/youtube.txt) · [youtube.lst](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/youtube.lst) | только домены | `geosite:youtube` |
+| [ip-geo-detect.txt](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/ip-geo-detect.txt) · [ip-geo-detect.lst](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/ip-geo-detect.lst) | только домены | `geosite:category-ip-geo-detect` |
 
-Три основных списка: `ru`, `telegram`, `youtube`. Остальные — производные
+Четыре основных списка: `ru`, `telegram`, `youtube` и `ip-geo-detect`
+(сервисы определения IP-адреса и геолокации). Остальные — производные
 для клиентов, которые не принимают смешанные списки или IPv6. Каждый файл
 опубликован в двух байт-идентичных копиях, `.txt` и `.lst`: берите то
 расширение, которое ожидает ваш клиент. Пути опубликованных файлов после
@@ -203,7 +205,8 @@ go test ./...
 (ветка `release`, лицензия репозитория GPL-3.0), который собирает файлы из:
 
 - [v2fly/domain-list-community](https://github.com/v2fly/domain-list-community)
-  (MIT) — категории `category-ru`, `telegram`, `youtube` в `geosite.dat`
+  (MIT) — категории `category-ru`, `telegram`, `youtube`,
+  `category-ip-geo-detect` в `geosite.dat`
   (через [runetfreedom/russia-blocked-geosite](https://github.com/runetfreedom/russia-blocked-geosite), GPL-3.0);
 - [Loyalsoldier/geoip](https://github.com/Loyalsoldier/geoip) (CC BY-SA 4.0) —
   страновые категории `geoip.dat`, включая `geoip:ru`
