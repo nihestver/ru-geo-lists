@@ -1,0 +1,54 @@
+# geo2list configuration. Adding a category or an extra domain is a one-line change.
+
+# Upstream files. The .sha256sum files published next to them verify every
+# download; min_size_bytes rejects truncated downloads (today geosite.dat is
+# about 70 MB and geoip.dat about 18 MB).
+sources:
+  geosite:
+    url: https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/geosite.dat
+    checksum_url: https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/geosite.dat.sha256sum
+    min_size_bytes: 10000000
+  geoip:
+    url: https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/geoip.dat
+    checksum_url: https://raw.githubusercontent.com/runetfreedom/russia-v2ray-rules-dat/release/geoip.dat.sha256sum
+    min_size_bytes: 2000000
+
+output:
+  dir: lists
+  # The single place where the file extension is defined. Do not change it
+  # after the first release: clients reference the published paths.
+  extension: txt
+  # Merge adjacent and overlapping prefixes. This never changes the set of
+  # matched addresses (verified by tests).
+  aggregate_cidrs: true
+
+safety:
+  # The build fails and nothing is published when a file's line count changes
+  # by more than this fraction compared with the previously published version
+  # (0.30 = 30%)...
+  max_change_ratio: 0.30
+  # ...unless the change is at most this many lines, so that small lists are
+  # not blocked by a handful of entries.
+  small_change_lines: 10
+
+# Output kinds:
+#   combined  domains, then IPv4 CIDRs, then IPv6 CIDRs   -> <name>.<extension>
+#   domains   domains only                                 -> <name>-domains.<extension>
+#   ipv4      IPv4 CIDRs only                              -> <name>-ipv4.<extension>
+#   ipv6      IPv6 CIDRs only                              -> <name>-ipv6.<extension>
+# Category codes are matched case-insensitively.
+lists:
+  - name: ru
+    geosite: [category-ru]
+    geoip: [ru]
+    extra_domains: [dion.vc, inno.tech, inno.local]
+    outputs: [combined, domains, ipv4, ipv6]
+
+  - name: telegram
+    geosite: [telegram]
+    geoip: [telegram]
+    outputs: [combined, domains, ipv4, ipv6]
+
+  - name: youtube
+    geosite: [youtube]
+    outputs: [combined]

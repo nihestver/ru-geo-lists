@@ -1,0 +1,105 @@
+name: Update lists
+
+on:
+  schedule:
+    # Every day at 04:20 Europe/Moscow. GitHub Actions supports IANA time zones
+    # in schedule triggers; 20 minutes past the hour avoids the busiest slot.
+    - cron: '20 4 * * *'
+      timezone: Europe/Moscow
+  workflow_dispatch:
+    inputs:
+      allow_large_change:
+        description: Accept list size changes above the safety threshold
+        type: boolean
+        default: false
+
+# No permissions by default; the job grants itself only what it needs.
+permissions: {}
+
+concurrency:
+  group: update-lists
+  cancel-in-progress: false
+
+env:
+  # GitHub disables scheduled workflows in public repositories after 60 days
+  # without repository activity. When the lists have not changed and the last
+  # commit is older than this many days, the job makes one small commit that
+  # updates last-verified.txt so that the schedule stays active.
+  KEEPALIVE_DAYS: "50"
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+
+      - name: Test and build the tool
+        run: |
+          go vet ./...
+          go test ./...
+          go build -o geo2list ./cmd/geo2list
+
+      - name: Fetch upstream files
+        run: ./geo2list fetch -dir .cache
+
+      - name: Build lists
+        env:
+          ALLOW_LARGE_CHANGE: ${{ inputs.allow_large_change == true && '-allow-large-change' || '' }}
+        run: |
+          ./geo2list build -geosite .cache/geosite.dat -geoip .cache/geoip.dat \
+            -summary summary.md -commit-message commit-message.txt $ALLOW_LARGE_CHANGE
+
+      - name: Validate lists
+        run: ./geo2list validate
+
+      - name: Publish step summary
+        if: ${{ !cancelled() }}
+        run: |
+          if [ -f summary.md ]; then
+            cat summary.md >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Commit and push
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          write_state() {
+            {
+              echo "# Last successful verification of the published lists against upstream."
+              echo "date: $(date -u +%Y-%m-%d)"
+              echo "geoip.dat: $(cut -d' ' -f1 .cache/geoip.dat.sha256sum)"
+              echo "geosite.dat: $(cut -d' ' -f1 .cache/geosite.dat.sha256sum)"
+            } > last-verified.txt
+          }
+
+          git add -A lists
+          if ! git diff --cached --quiet; then
+            write_state
+            git add last-verified.txt
+            git commit -F commit-message.txt
+            git push
+            echo "Published updated lists." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+
+          age=$(( ( $(date +%s) - $(git log -1 --format=%ct) ) / 86400 ))
+          if [ "$age" -ge "$KEEPALIVE_DAYS" ]; then
+            write_state
+            git add last-verified.txt
+            git commit -m "Keep scheduled workflow active (lists unchanged, last commit $age days ago)"
+            git push
+            echo "No list changes; made a keep-alive commit (last commit was $age days old)." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "No list changes; nothing to commit (last commit $age days ago)." >> "$GITHUB_STEP_SUMMARY"
+          fi

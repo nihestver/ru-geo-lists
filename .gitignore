@@ -1,0 +1,5 @@
+# Downloaded upstream files and build artifacts
+/.cache/
+/geo2list
+/summary.md
+/commit-message.txt

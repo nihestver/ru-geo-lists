@@ -1,0 +1,3 @@
+# Published lists must always use LF line endings, on every platform.
+lists/** text eol=lf
+* text=auto eol=lf
