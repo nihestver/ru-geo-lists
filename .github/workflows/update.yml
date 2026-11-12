@@ -6,6 +6,15 @@ on:
     # in schedule triggers; 20 minutes past the hour avoids the busiest slot.
     - cron: '20 4 * * *'
       timezone: Europe/Moscow
+  # Rebuild right away when the hand-maintained entries or the configuration
+  # change, so that an edit of custom/custom.txt is published within minutes.
+  # The bot's own pushes (GITHUB_TOKEN) never start a workflow, and they only
+  # touch lists/ and last-verified.txt anyway.
+  push:
+    branches: [main]
+    paths:
+      - 'custom/**'
+      - 'config.yaml'
   workflow_dispatch:
     inputs:
       allow_large_change:

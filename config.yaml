@@ -1,4 +1,5 @@
-# geo2list configuration. Adding a category or an extra domain is a one-line change.
+# geo2list configuration. Adding a category or an extra domain is a one-line
+# change; your own domains, IP addresses and subnets go into custom/custom.txt.
 
 # Upstream files. The .sha256sum files published next to them verify every
 # download; min_size_bytes rejects truncated downloads (today geosite.dat is
@@ -30,7 +31,9 @@ safety:
   # (0.30 = 30%)...
   max_change_ratio: 0.30
   # ...unless the change is at most this many lines, so that small lists are
-  # not blocked by a handful of entries.
+  # not blocked by a handful of entries. Outputs that take nothing from the
+  # .dat files (only extra_domains and files) are not checked at all: the
+  # threshold guards against a broken upstream, not against your own edits.
   small_change_lines: 10
 
 # Output kinds (each written once per extension in output.extensions):
@@ -39,6 +42,16 @@ safety:
 #   ipv4      IPv4 CIDRs only                              -> <name>-ipv4.<ext>
 #   ipv6      IPv6 CIDRs only                              -> <name>-ipv6.<ext>
 # Category codes are matched case-insensitively.
+#
+# Sources of a list (any combination):
+#   geosite        categories of geosite.dat
+#   geoip          categories of geoip.dat
+#   extra_domains  a few domains right here in the config
+#   files          hand-maintained files with domains, IP addresses and CIDRs,
+#                  one per line, "#" comments allowed; paths are relative to
+#                  the repository root. A single IP becomes a /32 or /128.
+# An output that is filled only from extra_domains and files may be empty
+# (a zero-byte file); an output fed by a .dat category may not.
 lists:
   - name: ru
     geosite: [category-ru]
@@ -58,3 +71,15 @@ lists:
   - name: ip-geo-detect
     geosite: [category-ip-geo-detect]
     outputs: [combined]
+
+  # About 180 000 advertising and tracking domains: the v2fly category plus
+  # AdGuard DNS filter and Peter Lowe's list, as merged by runetfreedom.
+  - name: ads-all
+    geosite: [category-ads-all]
+    outputs: [combined]
+
+  # Your own entries, see custom/custom.txt. To add entries to another list
+  # instead, give that list its own file: "files: [custom/ru.txt]".
+  - name: custom
+    files: [custom/custom.txt]
+    outputs: [combined, domains, ipv4, ipv6]

@@ -64,7 +64,25 @@ type List struct {
 	GeoSite      []string `yaml:"geosite"`
 	GeoIP        []string `yaml:"geoip"`
 	ExtraDomains []string `yaml:"extra_domains"`
-	Outputs      []string `yaml:"outputs"`
+	// Files are hand-maintained source files with extra domains, IP addresses
+	// and CIDRs (see package custom), relative to the working directory.
+	Files   []string `yaml:"files"`
+	Outputs []string `yaml:"outputs"`
+}
+
+// UpstreamFed reports whether output kind k of the list receives entries
+// from geosite.dat or geoip.dat. Outputs that do not are filled only from
+// hand-maintained sources (extra_domains, files): they may be empty and are
+// not subject to the change threshold.
+func (l List) UpstreamFed(k listfile.Kind) bool {
+	switch k {
+	case listfile.KindDomains:
+		return len(l.GeoSite) > 0
+	case listfile.KindIPv4, listfile.KindIPv6:
+		return len(l.GeoIP) > 0
+	default:
+		return len(l.GeoSite) > 0 || len(l.GeoIP) > 0
+	}
 }
 
 // Kinds returns the parsed output kinds of the list.
@@ -174,10 +192,21 @@ func (c *Config) Validate() error {
 				fail("%s: empty extra domain", where)
 			}
 		}
-		hasDomains := len(l.GeoSite) > 0 || len(l.ExtraDomains) > 0
-		hasIPs := len(l.GeoIP) > 0
+		seenFile := map[string]bool{}
+		for _, f := range l.Files {
+			if strings.TrimSpace(f) == "" {
+				fail("%s: empty file name in files", where)
+			}
+			if seenFile[f] {
+				fail("%s: duplicate file %q", where, f)
+			}
+			seenFile[f] = true
+		}
+		// A custom file may hold domains as well as addresses.
+		hasDomains := len(l.GeoSite) > 0 || len(l.ExtraDomains) > 0 || len(l.Files) > 0
+		hasIPs := len(l.GeoIP) > 0 || len(l.Files) > 0
 		if !hasDomains && !hasIPs {
-			fail("%s: needs geosite, geoip or extra_domains", where)
+			fail("%s: needs geosite, geoip, extra_domains or files", where)
 		}
 		if len(l.Outputs) == 0 {
 			fail("%s: outputs must not be empty", where)
@@ -196,16 +225,16 @@ func (c *Config) Validate() error {
 			switch k {
 			case listfile.KindDomains:
 				if !hasDomains {
-					fail("%s: output %q needs geosite or extra_domains", where, o)
+					fail("%s: output %q needs geosite, extra_domains or files", where, o)
 				}
 			case listfile.KindIPv4, listfile.KindIPv6:
 				if !hasIPs {
-					fail("%s: output %q needs geoip", where, o)
+					fail("%s: output %q needs geoip or files", where, o)
 				}
 			}
 		}
 		needSite = needSite || len(l.GeoSite) > 0
-		needIP = needIP || hasIPs
+		needIP = needIP || len(l.GeoIP) > 0
 	}
 	if needSite && c.Sources.GeoSite.URL == "" {
 		fail("sources.geosite.url is required by the configured lists")

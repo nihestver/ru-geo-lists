@@ -3,7 +3,8 @@
 // File format: exactly one domain or one CIDR per line, no comments, no
 // empty lines, no BOM, LF line endings with a final newline, lower case, no
 // duplicates. Combined files contain domains first, then IPv4 prefixes, then
-// IPv6 prefixes; every section is sorted.
+// IPv6 prefixes; every section is sorted. A list without entries is a
+// zero-byte file; only lists built from hand-maintained sources may be empty.
 package listfile
 
 import (
@@ -113,6 +114,13 @@ func Write(path string, lines []string) error {
 	if len(lines) == 0 {
 		return fmt.Errorf("%s: refusing to write an empty list", path)
 	}
+	return WriteAllowEmpty(path, lines)
+}
+
+// WriteAllowEmpty is Write without the empty-list guard: no lines produce a
+// zero-byte file. It is meant for lists filled only from hand-maintained
+// sources, which are legitimately empty until someone adds an entry.
+func WriteAllowEmpty(path string, lines []string) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
@@ -164,11 +172,15 @@ func SameContent(paths []string) error {
 	return nil
 }
 
-// ValidateFile reads path and checks it with Validate.
-func ValidateFile(path string, k Kind) error {
+// ValidateFile reads path and checks it with Validate. With allowEmpty a
+// zero-byte file is accepted as a list without entries.
+func ValidateFile(path string, k Kind, allowEmpty bool) error {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return err
+	}
+	if allowEmpty && len(data) == 0 {
+		return nil
 	}
 	if err := Validate(data, k); err != nil {
 		return fmt.Errorf("%s: %w", path, err)

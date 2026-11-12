@@ -405,3 +405,174 @@ func TestMissingInputFile(t *testing.T) {
 		t.Fatal("expected error for missing geosite.dat")
 	}
 }
+
+const customConfig = `
+sources:
+  geosite: {url: https://example.invalid/geosite.dat}
+  geoip: {url: https://example.invalid/geoip.dat}
+output:
+  dir: %s
+  extensions: [txt, lst]
+lists:
+  - name: telegram
+    geosite: [telegram]
+    geoip: [telegram]
+    files: [CUSTOMDIR/telegram.txt]
+    outputs: [combined, domains, ipv4, ipv6]
+  - name: custom
+    files: [CUSTOMDIR/custom.txt]
+    outputs: [combined, domains, ipv4, ipv6]
+`
+
+// setupCustom is setup for customConfig: it writes the two hand-maintained
+// source files and points the configuration at them.
+func setupCustom(t *testing.T, telegram, custom string) (Options, string, string) {
+	t.Helper()
+	dir := t.TempDir()
+	for name, content := range map[string]string{"telegram.txt": telegram, "custom.txt": custom} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	opt, out := setup(t, strings.ReplaceAll(customConfig, "CUSTOMDIR", dir))
+	return opt, out, dir
+}
+
+func TestCustomFiles(t *testing.T) {
+	opt, out, _ := setupCustom(t,
+		"# extra Telegram entries\ncdn.telegram.org\nTelegra.PH\n149.154.164.0/22  # inside the geoip prefix\n91.108.4.0/22\n",
+		"# my own entries\nExample.com\nwww.example.com\ninno.local\n\n203.0.113.7\n198.51.100.77/24\n198.51.100.0/25\n")
+	rep, err := Run(opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Violations) != 0 || !rep.Written {
+		t.Fatalf("unexpected report state: %+v", rep)
+	}
+	tgDomains := "t.me\ntelegra.ph\ntelegram.org\n"
+	tgV4 := "91.108.4.0/22\n149.154.160.0/20\n"
+	tgV6 := "2001:b28:f23d::/48\n"
+	cDomains := "example.com\ninno.local\n"
+	cV4 := "198.51.100.0/24\n203.0.113.7/32\n"
+	want := map[string]string{
+		"telegram": tgDomains + tgV4 + tgV6, "telegram-domains": tgDomains, "telegram-ipv4": tgV4, "telegram-ipv6": tgV6,
+		// The custom file has no IPv6 entries: the IPv6 output is a zero-byte file.
+		"custom": cDomains + cV4, "custom-domains": cDomains, "custom-ipv4": cV4, "custom-ipv6": "",
+	}
+	for base, content := range want {
+		for _, ext := range []string{".txt", ".lst"} {
+			if got := read(t, filepath.Join(out, base+ext)); got != content {
+				t.Errorf("%s%s:\n got %q\nwant %q", base, ext, got, content)
+			}
+		}
+	}
+	tg, cu := rep.Lists[0], rep.Lists[1]
+	if tg.Domains != 3 || tg.IPv4 != 2 || tg.IPv6 != 1 || tg.CoveredRemoved != 1 || tg.PrefixesBeforeAggregation != 4 {
+		t.Errorf("telegram counts: %+v", tg)
+	}
+	if cu.Domains != 2 || cu.IPv4 != 2 || cu.IPv6 != 0 || cu.CoveredRemoved != 1 || cu.PrefixesBeforeAggregation != 3 {
+		t.Errorf("custom counts: %+v", cu)
+	}
+	if c := cu.CustomFiles[0]; c.Domains != 3 || c.IPv4 != 3 || c.IPv6 != 0 || !strings.HasSuffix(c.Path, "custom.txt") {
+		t.Errorf("custom file stats: %+v", c)
+	}
+	md := rep.Markdown()
+	for _, s := range []string{"| `custom-ipv6.txt`, `custom-ipv6.lst` | 0 | — | new |", "custom.txt: 3 domains, 3 IPv4, 0 IPv6", "telegram.txt: 2 domains, 2 IPv4, 0 IPv6"} {
+		if !strings.Contains(md, s) {
+			t.Errorf("markdown lacks %q:\n%s", s, md)
+		}
+	}
+	if msg := rep.CommitMessage(); !strings.Contains(msg, "custom.txt, custom.lst: 4 lines (new); 2 domains, 2 IPv4, 0 IPv6\n") || !strings.Contains(msg, "custom-ipv6.txt, custom-ipv6.lst: 0 lines (new)\n") {
+		t.Errorf("commit message:\n%s", msg)
+	}
+
+	// A second run with the same input changes nothing, empty files included.
+	rep, err = Run(opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, lr := range rep.Lists {
+		for _, f := range lr.Files {
+			if f.IsNew() || f.Added != 0 || f.Removed != 0 {
+				t.Errorf("second run should report no change: %+v", f)
+			}
+		}
+	}
+}
+
+func TestCustomFileMayBeEmptyAndIgnoresThreshold(t *testing.T) {
+	// Only comments: every output of the hand-maintained list is a zero-byte file.
+	opt, out, dir := setupCustom(t, "", "# nothing yet\n\n")
+	rep, err := Run(opt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, base := range []string{"custom", "custom-domains", "custom-ipv4", "custom-ipv6"} {
+		for _, ext := range []string{".txt", ".lst"} {
+			if got := read(t, filepath.Join(out, base+ext)); got != "" {
+				t.Errorf("%s%s should be empty, got %q", base, ext, got)
+			}
+		}
+	}
+	if cu := rep.Lists[1]; cu.Domains != 0 || cu.IPv4 != 0 || cu.IPv6 != 0 {
+		t.Errorf("custom counts: %+v", cu)
+	}
+	// The outputs fed by the .dat files are unaffected by an empty custom file.
+	if got := read(t, filepath.Join(out, "telegram.txt")); got != "t.me\ntelegram.org\n149.154.160.0/20\n2001:b28:f23d::/48\n" {
+		t.Errorf("telegram.txt: %q", got)
+	}
+
+	// Going from 0 to 40 entries and back is far above 30%, but the threshold
+	// protects against a broken upstream, not against the owner's own edits.
+	var many strings.Builder
+	for i := 0; i < 40; i++ {
+		many.WriteString("host" + string(rune('a'+i%26)) + strings.Repeat("x", i/26) + ".example\n")
+	}
+	custom := filepath.Join(dir, "custom.txt")
+	if err := os.WriteFile(custom, []byte(many.String()), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rep, err = Run(opt)
+	if err != nil || len(rep.Violations) != 0 {
+		t.Fatalf("growing a hand-maintained list must not trip the threshold: %v, %+v", err, rep)
+	}
+	if f := rep.Lists[1].Files[0]; f.Previous != 0 || f.Lines != 40 || f.Added != 40 {
+		t.Errorf("file stats: %+v", f)
+	}
+	if err := os.WriteFile(custom, nil, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	rep, err = Run(opt)
+	if err != nil || len(rep.Violations) != 0 {
+		t.Fatalf("emptying a hand-maintained list must not trip the threshold: %v, %+v", err, rep)
+	}
+	if got := read(t, filepath.Join(out, "custom.lst")); got != "" {
+		t.Errorf("custom.lst should be empty again, got %q", got)
+	}
+
+	// The same jump in an output fed by geoip.dat is still a violation.
+	var v4 []string
+	for i := 0; i < 40; i++ {
+		v4 = append(v4, "10."+string(rune('0'+i/10))+string(rune('0'+i%10))+".0.0/16")
+	}
+	if err := listfile.Write(filepath.Join(out, "telegram-ipv4.txt"), v4); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Run(opt); !errors.Is(err, ErrThreshold) {
+		t.Fatalf("expected ErrThreshold for telegram-ipv4.txt, got %v", err)
+	}
+}
+
+func TestCustomFileErrors(t *testing.T) {
+	opt, _, _ := setupCustom(t, "", "ok.example\nnot a domain\n")
+	if _, err := Run(opt); err == nil || !strings.Contains(err.Error(), "custom.txt:2: ") || !strings.Contains(err.Error(), `list "custom"`) {
+		t.Errorf("bad line: got %v", err)
+	}
+	opt, _, dir := setupCustom(t, "", "")
+	if err := os.Remove(filepath.Join(dir, "custom.txt")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Run(opt); err == nil || !errors.Is(err, os.ErrNotExist) {
+		t.Errorf("missing custom file: got %v", err)
+	}
+}

@@ -12,6 +12,7 @@ import (
 
 	"github.com/nihestver/ru-geo-lists/internal/cidr"
 	"github.com/nihestver/ru-geo-lists/internal/config"
+	"github.com/nihestver/ru-geo-lists/internal/custom"
 	"github.com/nihestver/ru-geo-lists/internal/domain"
 	"github.com/nihestver/ru-geo-lists/internal/geodat"
 	"github.com/nihestver/ru-geo-lists/internal/listfile"
@@ -75,6 +76,14 @@ type GeoIPStats struct {
 	InverseMatch bool
 }
 
+// CustomStats describes the entries read from one hand-maintained file.
+type CustomStats struct {
+	Path    string
+	Domains int
+	IPv4    int
+	IPv6    int
+}
+
 // FileStats describes one output file and its change against the previous version.
 type FileStats struct {
 	Name string
@@ -87,6 +96,9 @@ type FileStats struct {
 	Removed  int
 	// Violation is set when the change exceeds the safety threshold.
 	Violation string
+	// AllowEmpty is set for outputs filled only from hand-maintained sources:
+	// they may have no lines and are exempt from the safety threshold.
+	AllowEmpty bool
 }
 
 // IsNew reports whether the file did not exist before.
@@ -101,6 +113,7 @@ type ListReport struct {
 	Categories   []CategoryStats
 	GeoIPs       []GeoIPStats
 	ExtraDomains []string
+	CustomFiles  []CustomStats
 	// CoveredRemoved counts subdomains dropped because a parent domain is in the list.
 	CoveredRemoved int
 	// SingleLabel lists top-level-domain entries such as "ru" for the report.
@@ -173,11 +186,18 @@ func Run(opt Options) (*Report, error) {
 		}
 		for _, k := range kinds {
 			lines := lr.content.Lines(k)
-			if len(lines) == 0 {
+			// Outputs that receive nothing from the .dat files hold only what
+			// people put into extra_domains and custom files. They may be
+			// empty, and the threshold, which guards against a broken
+			// upstream, does not apply to them.
+			manual := !cfg.Lists[i].UpstreamFed(k)
+			switch {
+			case len(lines) > 0:
+				if err := listfile.Validate(listfile.Encode(lines), k); err != nil {
+					return nil, fmt.Errorf("list %q: generated %s output is invalid (bug): %w", lr.Name, k, err)
+				}
+			case !manual:
 				return nil, fmt.Errorf("list %q: %s output would be empty", lr.Name, k)
-			}
-			if err := listfile.Validate(listfile.Encode(lines), k); err != nil {
-				return nil, fmt.Errorf("list %q: generated %s output is invalid (bug): %w", lr.Name, k, err)
 			}
 			// One file per extension, all with the same content. Each copy is
 			// compared with its own previous version, so a newly added
@@ -185,13 +205,13 @@ func Run(opt Options) (*Report, error) {
 			for _, ext := range cfg.Output.Extensions {
 				name := listfile.FileName(lr.Name, k, ext)
 				path := filepath.Join(cfg.Output.Dir, name)
-				fs := FileStats{Name: name, Path: path, Kind: k, Lines: len(lines), Previous: -1}
+				fs := FileStats{Name: name, Path: path, Kind: k, Lines: len(lines), Previous: -1, AllowEmpty: manual}
 				prev, err := listfile.ReadLines(path)
 				switch {
 				case err == nil:
 					fs.Previous = len(prev)
 					fs.Added, fs.Removed = diff(prev, lines)
-					if exceeds(fs.Previous, fs.Lines, cfg.Safety) {
+					if !manual && exceeds(fs.Previous, fs.Lines, cfg.Safety) {
 						fs.Violation = fmt.Sprintf("%s: %d -> %d lines (%+.1f%%), threshold is %.0f%% (changes of up to %d lines are always allowed)",
 							name, fs.Previous, fs.Lines, 100*float64(fs.Lines-fs.Previous)/float64(fs.Previous), 100*cfg.Safety.MaxChangeRatio, cfg.Safety.SmallChangeLines)
 						rep.Violations = append(rep.Violations, fs.Violation)
@@ -220,7 +240,11 @@ func Run(opt Options) (*Report, error) {
 	}
 	for _, lr := range rep.Lists {
 		for _, fs := range lr.Files {
-			if err := listfile.Write(fs.Path, lr.content.Lines(fs.Kind)); err != nil {
+			write := listfile.Write
+			if fs.AllowEmpty {
+				write = listfile.WriteAllowEmpty
+			}
+			if err := write(fs.Path, lr.content.Lines(fs.Kind)); err != nil {
 				return rep, err
 			}
 			logf("wrote %s (%d lines)", fs.Path, fs.Lines)
@@ -296,6 +320,24 @@ func buildList(spec config.List, cfg *config.Config, sites []geodat.GeoSite, ips
 		lr.ExtraDomains = append(lr.ExtraDomains, name)
 	}
 
+	// Hand-maintained files are trusted like extra domains (no Public Suffix
+	// List check); a line that is neither a domain, an address nor a CIDR
+	// fails the build with the file name and line number.
+	var all []netip.Prefix
+	for _, path := range spec.Files {
+		entries, err := custom.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("custom file %w", err)
+		}
+		for _, d := range entries.Domains {
+			set.Add(d)
+		}
+		v4, v6 := cidr.Split(entries.Prefixes)
+		logf("list %s: custom file %s: %d domains, %d IPv4, %d IPv6", spec.Name, path, len(entries.Domains), len(v4), len(v6))
+		lr.CustomFiles = append(lr.CustomFiles, CustomStats{Path: path, Domains: len(entries.Domains), IPv4: len(v4), IPv6: len(v6)})
+		all = append(all, entries.Prefixes...)
+	}
+
 	lr.content.Domains = set.Minimal()
 	lr.Domains = len(lr.content.Domains)
 	lr.CoveredRemoved = set.Len() - lr.Domains
@@ -308,7 +350,6 @@ func buildList(spec config.List, cfg *config.Config, sites []geodat.GeoSite, ips
 		logf("list %s: %d subdomains removed because a parent domain is present", spec.Name, lr.CoveredRemoved)
 	}
 
-	var all []netip.Prefix
 	for _, code := range spec.GeoIP {
 		entry, err := geodat.FindGeoIP(ips, code)
 		if err != nil {
@@ -336,7 +377,7 @@ func buildList(spec config.List, cfg *config.Config, sites []geodat.GeoSite, ips
 		lr.GeoIPs = append(lr.GeoIPs, gs)
 		all = append(all, ps...)
 	}
-	if len(spec.GeoIP) > 0 {
+	if len(all) > 0 {
 		lr.PrefixesBeforeAggregation = len(all)
 		if cfg.Output.AggregateCIDRs {
 			all = cidr.Aggregate(all)
@@ -450,6 +491,9 @@ func (r *Report) Markdown() string {
 		}
 		if len(lr.ExtraDomains) > 0 {
 			notes = append(notes, "extra domains: "+strings.Join(lr.ExtraDomains, ", "))
+		}
+		for _, c := range lr.CustomFiles {
+			notes = append(notes, fmt.Sprintf("custom file %s: %d domains, %d IPv4, %d IPv6", c.Path, c.Domains, c.IPv4, c.IPv6))
 		}
 		if lr.CoveredRemoved > 0 {
 			notes = append(notes, fmt.Sprintf("%d subdomains removed as covered by a parent", lr.CoveredRemoved))

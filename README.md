@@ -22,9 +22,16 @@
 | [telegram-ipv6.txt](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/telegram-ipv6.txt) · [telegram-ipv6.lst](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/telegram-ipv6.lst) | только IPv6-CIDR | `geoip:telegram` |
 | [youtube.txt](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/youtube.txt) · [youtube.lst](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/youtube.lst) | только домены | `geosite:youtube` |
 | [ip-geo-detect.txt](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/ip-geo-detect.txt) · [ip-geo-detect.lst](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/ip-geo-detect.lst) | только домены | `geosite:category-ip-geo-detect` |
+| [ads-all.txt](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/ads-all.txt) · [ads-all.lst](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/ads-all.lst) | только домены | `geosite:category-ads-all` |
+| [custom.txt](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/custom.txt) · [custom.lst](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/custom.lst) | домены + IPv4 + IPv6 | [`custom/custom.txt`](custom/custom.txt) |
+| [custom-domains.txt](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/custom-domains.txt) · [custom-domains.lst](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/custom-domains.lst) | только домены | то же |
+| [custom-ipv4.txt](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/custom-ipv4.txt) · [custom-ipv4.lst](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/custom-ipv4.lst) | только IPv4-CIDR | то же |
+| [custom-ipv6.txt](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/custom-ipv6.txt) · [custom-ipv6.lst](https://raw.githubusercontent.com/nihestver/ru-geo-lists/main/lists/custom-ipv6.lst) | только IPv6-CIDR | то же |
 
-Четыре основных списка: `ru`, `telegram`, `youtube` и `ip-geo-detect`
-(сервисы определения IP-адреса и геолокации). Остальные — производные
+Шесть основных списков: `ru`, `telegram`, `youtube`, `ip-geo-detect`
+(сервисы определения IP-адреса и геолокации), `ads-all` (реклама и трекеры,
+около 180 тысяч доменов) и `custom` — [свои записи](#свои-домены-и-адреса),
+которые ведутся вручную. Остальные — производные
 для клиентов, которые не принимают смешанные списки или IPv6. Каждый файл
 опубликован в двух байт-идентичных копиях, `.txt` и `.lst`: берите то
 расширение, которое ожидает ваш клиент. Пути опубликованных файлов после
@@ -34,6 +41,8 @@
 
 - Ровно один домен или один CIDR на строку. Никаких комментариев, заголовков,
   пустых строк и BOM.
+- Список без записей — файл нулевой длины. Пустыми бывают только файлы
+  `custom*`, пока в `custom/custom.txt` нет записей нужного вида.
 - Переводы строк только LF, в конце файла есть перевод строки (закреплено
   в `.gitattributes`).
 - Нижний регистр, без дубликатов, детерминированная сортировка: при
@@ -68,7 +77,8 @@
   строкой.
 - Домены из `.dat`, чей TLD не числится в секции ICANN
   [Public Suffix List](https://publicsuffix.org/), пропускаются и считаются.
-  Дополнительные домены из конфига (`inno.local`) эту проверку обходят.
+  Дополнительные домены из конфига (`inno.local`) и записи из
+  `custom/custom.txt` эту проверку обходят.
 - Для `geoip` учитывается флаг `inverse_match` (в старых схемах `reverse_match`):
   публикуется дополнение набора адресов в пределах семейства (IPv4 и IPv6
   отдельно), и в лог пишется предупреждение. В текущих данных флаг не
@@ -79,11 +89,42 @@
   агрегированные данные, поэтому число префиксов совпадает с исходным.
   Отключается в `config.yaml` (`aggregate_cidrs: false`).
 
+## Свои домены и адреса
+
+Свои записи добавляются в [`custom/custom.txt`](custom/custom.txt) — по одной
+на строку, в любом порядке:
+
+```
+# всё после решётки — комментарий
+example.com          # домен вместе со всеми поддоменами
+203.0.113.7          # IP-адрес, в списке станет 203.0.113.7/32
+198.51.100.0/24      # подсеть IPv4
+2001:db8::/32        # подсеть IPv6
+```
+
+Файл пишется руками, поэтому формат нестрогий: допускаются комментарии, пустые
+строки, любой регистр, префиксы `domain:` и `full:`, `*.`, кириллические домены,
+CRLF. При сборке записи приводятся к [формату](#формат) опубликованных списков:
+сортируются, дубликаты, покрытые поддомены и вложенные подсети убираются,
+у CIDR обнуляются биты хоста (`10.1.2.3/8` → `10.0.0.0/8`). Строка, которую не
+удалось разобрать, останавливает сборку с именем файла и номером строки —
+опубликованные списки при этом не меняются.
+
+Из файла собираются `custom`, `custom-domains`, `custom-ipv4` и `custom-ipv6`.
+После пуша изменений в `custom/` или `config.yaml` workflow запускается сразу,
+не дожидаясь ночного расписания, так что правка публикуется за пару минут.
+Локально то же самое делает `./geo2list build`.
+
+Свои записи можно подмешать и в любой другой список: создайте рядом ещё один
+файл и укажите его в `config.yaml` в ключе `files` нужного списка, например
+`files: [custom/ru.txt]` у списка `ru`.
+
 ## Расписание и автоматизация
 
 Workflow [`update.yml`](.github/workflows/update.yml) запускается ежедневно в
 **04:20 по Москве** (`cron: '20 4 * * *'` с `timezone: Europe/Moscow` — GitHub
-Actions поддерживает IANA-зоны в `schedule`) и вручную через `workflow_dispatch`.
+Actions поддерживает IANA-зоны в `schedule`), при пуше в `main` изменений в
+`custom/` или `config.yaml` и вручную через `workflow_dispatch`.
 
 Каждый запуск:
 
@@ -105,8 +146,10 @@ Actions поддерживает IANA-зоны в `schedule`) и вручную 
 предыдущей версии (порог `safety.max_change_ratio`). Изменения до 10 строк
 (`safety.small_change_lines`) принимаются всегда, чтобы маленькие списки не
 блокировались парой записей. Если большое изменение ожидаемо (например,
-добавили категорию), запустите workflow вручную с флажком
-`allow_large_change`.
+добавили категорию в существующий список), запустите workflow вручную с флажком
+`allow_large_change`. Новые файлы порогом не проверяются, как и файлы, в
+которые ничего не попадает из `.dat` (`custom*`): порог защищает от сломанного
+upstream, а не от собственных правок.
 
 Права workflow минимальны: на уровне workflow `permissions: {}`, у единственной
 задачи `contents: write`. Параллельные запуски исключены через `concurrency`,
@@ -164,7 +207,15 @@ lists:
     geoip: [ru]
     extra_domains: [dion.vc, inno.tech, inno.local]
     outputs: [combined, domains, ipv4, ipv6]
+
+  - name: custom
+    files: [custom/custom.txt]       # свои домены, IP и подсети
+    outputs: [combined, domains, ipv4, ipv6]
 ```
+
+Источники списка можно сочетать как угодно: `geosite`, `geoip`,
+`extra_domains` (несколько доменов прямо в конфиге) и `files` (файлы со
+своими доменами, IP-адресами и подсетями; пути считаются от корня репозитория).
 
 Виды выходных файлов: `combined` → `<name>.<ext>`, `domains` → `<name>-domains.<ext>`,
 `ipv4` → `<name>-ipv4.<ext>`, `ipv6` → `<name>-ipv6.<ext>`. Каждый вид
@@ -196,7 +247,8 @@ go test ./...
 домен или CIDR в канонической форме), отсутствие пустых строк, дубликатов, CR
 и BOM, порядок секций и сортировку; для производных файлов — что в них только
 домены, только IPv4 или только IPv6; копии одного списка с разными
-расширениями обязаны совпадать байт в байт.
+расширениями обязаны совпадать байт в байт. Файл нулевой длины допустим только
+для списков, которые собираются из одних ручных источников.
 
 ## Источники, лицензии и атрибуция
 
@@ -206,8 +258,12 @@ go test ./...
 
 - [v2fly/domain-list-community](https://github.com/v2fly/domain-list-community)
   (MIT) — категории `category-ru`, `telegram`, `youtube`,
-  `category-ip-geo-detect` в `geosite.dat`
+  `category-ip-geo-detect`, `category-ads-all` в `geosite.dat`
   (через [runetfreedom/russia-blocked-geosite](https://github.com/runetfreedom/russia-blocked-geosite), GPL-3.0);
+- [AdGuard DNS filter](https://github.com/AdguardTeam/AdguardSDNSFilter)
+  (GPL-3.0) и [Peter Lowe’s list](https://pgl.yoyo.org/adservers/) —
+  рекламные домены, которые runetfreedom добавляет в `category-ads-all`
+  (поэтому категория намного больше одноимённой в v2fly);
 - [Loyalsoldier/geoip](https://github.com/Loyalsoldier/geoip) (CC BY-SA 4.0) —
   страновые категории `geoip.dat`, включая `geoip:ru`
   (через [runetfreedom/russia-blocked-geoip](https://github.com/runetfreedom/russia-blocked-geoip), GPL-3.0).
@@ -218,5 +274,6 @@ go test ./...
 
 Списки в `lists/` — производные от этих данных и распространяются на условиях
 соответствующих исходных лицензий (CC BY-SA 4.0 для данных GeoIP, MIT для
-domain-list-community) с сохранением указанной атрибуции. Код инструмента —
-[MIT](LICENSE).
+domain-list-community, GPL-3.0 для AdGuard DNS filter в `ads-all`) с
+сохранением указанной атрибуции. Файлы `custom*` собираются только из
+`custom/custom.txt`. Код инструмента — [MIT](LICENSE).

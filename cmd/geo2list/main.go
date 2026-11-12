@@ -174,6 +174,9 @@ func runValidate(args []string) error {
 	type target struct {
 		path string
 		kind listfile.Kind
+		// allowEmpty accepts a zero-byte file: outputs filled only from
+		// hand-maintained sources have no entries until someone adds one.
+		allowEmpty bool
 	}
 	var targets []target
 	// copies groups the files of one list and kind that must be byte-identical
@@ -185,7 +188,7 @@ func runValidate(args []string) error {
 			return err
 		}
 		for _, p := range fs.Args() {
-			targets = append(targets, target{p, k})
+			targets = append(targets, target{p, k, false})
 		}
 	} else {
 		cfg, err := config.Load(*cfgPath)
@@ -201,7 +204,7 @@ func runValidate(args []string) error {
 				var paths []string
 				for _, ext := range cfg.Output.Extensions {
 					p := filepath.Join(cfg.Output.Dir, listfile.FileName(l.Name, k, ext))
-					targets = append(targets, target{p, k})
+					targets = append(targets, target{p, k, !l.UpstreamFed(k)})
 					paths = append(paths, p)
 				}
 				if len(paths) > 1 {
@@ -212,7 +215,7 @@ func runValidate(args []string) error {
 	}
 	var errs []error
 	for _, t := range targets {
-		if err := listfile.ValidateFile(t.path, t.kind); err != nil {
+		if err := listfile.ValidateFile(t.path, t.kind, t.allowEmpty); err != nil {
 			errs = append(errs, err)
 			log.Printf("FAIL %s: %v", t.path, err)
 			continue

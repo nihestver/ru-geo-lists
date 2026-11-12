@@ -121,7 +121,7 @@ func TestWriteReadValidateFile(t *testing.T) {
 	if string(data) != strings.Join(lines, "\n")+"\n" {
 		t.Fatalf("unexpected content %q", data)
 	}
-	if err := ValidateFile(path, KindCombined); err != nil {
+	if err := ValidateFile(path, KindCombined, false); err != nil {
 		t.Fatal(err)
 	}
 	got, err := ReadLines(path)
@@ -133,6 +133,23 @@ func TestWriteReadValidateFile(t *testing.T) {
 	}
 	if err := Write(filepath.Join(dir, "empty.txt"), nil); err == nil {
 		t.Fatal("writing an empty list must fail")
+	}
+	// Lists built from hand-maintained sources may be empty: a zero-byte file.
+	empty := filepath.Join(dir, "custom.txt")
+	if err := WriteAllowEmpty(empty, nil); err != nil {
+		t.Fatal(err)
+	}
+	if data, err := os.ReadFile(empty); err != nil || len(data) != 0 {
+		t.Fatalf("empty list: %q, %v", data, err)
+	}
+	if got, err := ReadLines(empty); err != nil || len(got) != 0 {
+		t.Fatalf("ReadLines(empty) = %v, %v", got, err)
+	}
+	if err := ValidateFile(empty, KindCombined, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := ValidateFile(empty, KindCombined, false); err == nil {
+		t.Fatal("an empty file must be rejected unless explicitly allowed")
 	}
 	if _, err := ReadLines(filepath.Join(dir, "missing.txt")); !os.IsNotExist(err) {
 		t.Fatalf("expected not-exist error, got %v", err)
