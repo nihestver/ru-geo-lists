@@ -1,4 +1,4 @@
 # Last successful verification of the published lists against upstream.
-date: 2026-11-24
-geoip.dat: 85efbe30f26edcc516fcd3f3b671f0335e304189d91984ee32232f906fa6c2fe
-geosite.dat: f5381b4b2e5a2f1a38dfee35656d711c66ad216cb5ea4d7155ef43e67c4ec531
+date: 2026-11-25
+geoip.dat: 782b61d00230439ffa30dca9446a1457ef78f249e4793af1cc6bdac965c438f0
+geosite.dat: 68c8ba4cd43694e77a7980c7eb89f2eb0a9216137de4a1575079aead0432d373
